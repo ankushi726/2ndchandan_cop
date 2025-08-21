@@ -1,547 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Share } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
-import { Share2 } from 'lucide-react-native';
-import { Header } from '@/components/Header';
 import { calculateBlastFreezerLoad } from '@/utils/blastFreezerCalculations';
-
-// Try to import expo-print and expo-sharing, but don't fail if they're not available
-let Print: any = null;
-let Sharing: any = null;
-
-try {
-  Print = require('expo-print');
-  Sharing = require('expo-sharing');
-  console.log('Blast Freezer - PDF packages loaded successfully');
-} catch (error) {
-  console.log('Blast Freezer - PDF packages not available, will use text sharing fallback', error);
-}
+import { Header } from '@/components/Header';
+import { SharePDFButton } from '@/components/SharePDFButton';
 
 export default function BlastFreezerResultsScreen() {
   const [results, setResults] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  const generateHTMLReport = () => {
-    if (!results) {
-      console.log('Blast Freezer - No results available for PDF generation');
-      return '';
-    }
-    
-    console.log('Blast Freezer - Generating PDF with results:', Object.keys(results));
-    console.log('Blast Freezer - Available properties:', {
-      hasProduct: !!results.product,
-      hasProductInfo: !!results.productInfo,
-      hasConditions: !!results.conditions,
-      hasUsage: !!results.usage,
-      hasConstruction: !!results.construction,
-      hasLoadBreakdown: !!results.loadBreakdown,
-      hasBreakdown: !!results.breakdown
-    });
-    
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Blast Freezer Cooling Load Report</title>
-        <style>
-            body { 
-                font-family: Arial, sans-serif; 
-                margin: 12px; 
-                line-height: 1.3; 
-                color: #333;
-                font-size: 11px;
-            }
-            .header { 
-                background: linear-gradient(135deg, #DC2626, #B91C1C); 
-                color: white; 
-                padding: 12px; 
-                text-align: center;
-                margin-bottom: 10px;
-                border-radius: 8px;
-            }
-            .company-name {
-                font-size: 28px;
-                font-weight: bold;
-                color: #1E3A8A;
-                margin-bottom: 5px;
-                letter-spacing: 2px;
-                text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
-            }
-            .powered-by {
-                font-size: 16px;
-                color: #3B82F6;
-                margin-bottom: 15px;
-                font-weight: 600;
-            }
-            .title { 
-                font-size: 24px; 
-                font-weight: bold; 
-                color: #1E3A8A; 
-                margin: 10px 0;
-            }
-            .main-result { 
-                background: linear-gradient(135deg, #1E3A8A, #3B82F6); 
-                color: white; 
-                padding: 20px; 
-                border-radius: 10px; 
-                text-align: center; 
-                margin: 20px 0;
-            }
-            .main-value { 
-                font-size: 32px; 
-                font-weight: bold; 
-                margin: 10px 0;
-            }
-            .section { 
-                margin: 20px 0; 
-                page-break-inside: avoid;
-            }
-            .section-title { 
-                font-size: 18px; 
-                font-weight: bold; 
-                color: #1E3A8A; 
-                border-bottom: 1px solid #E5E7EB; 
-                padding-bottom: 5px; 
-                margin-bottom: 15px;
-            }
-            .subsection {
-                margin-bottom: 20px;
-            }
-            .subsection-title {
-                font-size: 16px;
-                font-weight: bold;
-                color: #3B82F6;
-                margin-bottom: 10px;
-                padding-left: 10px;
-                border-left: 3px solid #3B82F6;
-            }
-            table { 
-                width: 100%; 
-                border-collapse: collapse; 
-                margin: 10px 0;
-                background: white;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            }
-            th, td { 
-                border: 1px solid #E5E7EB; 
-                padding: 4px; 
-                text-align: center; 
-                font-size: 9px;
-            }
-            th { 
-                background: #F8FAFC; 
-                font-weight: bold; 
-                color: #1E3A8A;
-            }
-            .total-row { 
-                background: #EBF8FF; 
-                font-weight: bold;
-            }
-            .final-row { 
-                background: #3B82F6; 
-                color: white; 
-                font-weight: bold;
-            }
-            .info-box { 
-                background: #F8FAFC; 
-                border-left: 4px solid #3B82F6; 
-                padding: 15px; 
-                margin: 10px 0;
-            }
-            .footer {
-                text-align: center;
-                margin-top: 30px;
-                padding-top: 20px;
-                border-top: 1px solid #E5E7EB;
-                color: #666;
-                font-size: 12px;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <div class="company-name">ENZO ENGINEERING SOLUTIONS</div>
-            <div class="powered-by">⚡ Powered by Enzo CoolCalc</div>
-            <div class="title">❄️ BLAST FREEZER COOLING LOAD CALCULATION REPORT</div>
-            <p style="margin: 5px 0; font-size: 10px;">Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
-        </div>
-
-        <div class="section">
-            <div class="section-title">📋 INPUT PARAMETERS</div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                <div>
-                    <div style="background: #FEF2F2; color: #B91C1C; padding: 4px 8px; font-weight: bold; font-size: 10px; margin-bottom: 4px; border-left: 3px solid #DC2626;">🏗️ Room Construction</div>
-                    <div style="background: #F8FAFC; border: 1px solid #E5E7EB; padding: 6px; border-radius: 4px; font-size: 9px;">
-                        <div><strong>Dimensions:</strong> ${results.dimensions?.length || 'N/A'}m × ${results.dimensions?.breadth || 'N/A'}m × ${results.dimensions?.height || 'N/A'}m</div>
-                        <div><strong>Volume:</strong> ${results.volume?.toFixed(1) || 'N/A'} m³</div>
-                        <div><strong>Door:</strong> ${results.doorDimensions?.width || 'N/A'}m × ${results.doorDimensions?.height || 'N/A'}m</div>
-                        <div><strong>Wall Area:</strong> ${results.areas?.walls?.toFixed(1) || 'N/A'} m²</div>
-                        <div><strong>Ceiling Area:</strong> ${results.areas?.ceiling?.toFixed(1) || 'N/A'} m²</div>
-                    </div>
-                </div>
-                
-                <div>
-                    <div style="background: #FEF2F2; color: #B91C1C; padding: 4px 8px; font-weight: bold; font-size: 10px; margin-bottom: 4px; border-left: 3px solid #DC2626;">🌡️ Operating Conditions</div>
-                    <div style="background: #F8FAFC; border: 1px solid #E5E7EB; padding: 6px; border-radius: 4px; font-size: 9px;">
-                        <div><strong>Ambient Temp:</strong> ${results.roomData?.ambientTemp || results.conditions?.ambientTemp || 35}°C</div>
-                        <div><strong>Room Temp:</strong> ${results.roomData?.roomTemp || results.conditions?.roomTemp || -35}°C</div>
-                        <div><strong>ΔT:</strong> ${results.temperatureDifference?.toFixed(0) || 70}°C</div>
-                        <div><strong>Batch Hours:</strong> ${results.batchHours || results.roomData?.batchHours || 8}h</div>
-                        <div><strong>Operating Hours:</strong> ${results.roomData?.operatingHours || 24}h/day</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                <div>
-                    <div style="background: #FEF2F2; color: #B91C1C; padding: 4px 8px; font-weight: bold; font-size: 10px; margin-bottom: 4px; border-left: 3px solid #DC2626;">🔧 Insulation Details</div>
-                    <div style="background: #F8FAFC; border: 1px solid #E5E7EB; padding: 6px; border-radius: 4px; font-size: 9px;">
-                        <div><strong>Type:</strong> ${results.construction.insulationType || 'PUF'}</div>
-                        <div><strong>Wall Thickness:</strong> ${results.construction.wallThickness || 150}mm</div>
-                        <div><strong>Ceiling Thickness:</strong> ${results.construction.ceilingThickness || 150}mm</div>
-                        <div><strong>Floor Thickness:</strong> ${results.construction.floorThickness || 150}mm</div>
-                        <div><strong>U-Factor:</strong> ${results.construction.uFactor ? results.construction.uFactor.toFixed(3) : 'N/A'} W/m²K</div>
-                    </div>
-                </div>
-                
-                <div>
-                    <div style="background: #FEF2F2; color: #B91C1C; padding: 4px 8px; font-weight: bold; font-size: 10px; margin-bottom: 4px; border-left: 3px solid #DC2626;">🥩 Product Information</div>
-                    <div style="background: #F8FAFC; border: 1px solid #E5E7EB; padding: 6px; border-radius: 4px; font-size: 9px;">
-                        <div><strong>Type:</strong> ${results.productInfo?.type || 'Chicken'}</div>
-                        <div><strong>Capacity/Batch:</strong> ${results.productInfo?.mass || 2000} kg</div>
-                        <div><strong>Incoming Temp:</strong> ${results.productInfo?.incomingTemp || -5}°C</div>
-                        <div><strong>Outgoing Temp:</strong> ${results.productInfo?.outgoingTemp || -30}°C</div>
-                        <div><strong>Storage Capacity:</strong> ${results.storageCapacity?.density || 4} kg/m³</div>
-                    </div>
-                </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                <div>
-                    <div style="background: #FEF2F2; color: #B91C1C; padding: 4px 8px; font-weight: bold; font-size: 10px; margin-bottom: 4px; border-left: 3px solid #DC2626;">🔥 Heater Configuration</div>
-                    <div style="background: #F8FAFC; border: 1px solid #E5E7EB; padding: 6px; border-radius: 4px; font-size: 9px;">
-                        <div><strong>Peripheral:</strong> ${results.roomData?.peripheralHeatersQty || 1} × ${results.roomData?.peripheralHeatersCapacity || 1.5}kW</div>
-                        <div><strong>Door:</strong> ${results.roomData?.doorHeatersQty || 1} × ${results.roomData?.doorHeatersCapacity || 0.27}kW</div>
-                        <div><strong>Tray:</strong> ${results.roomData?.trayHeatersQty || 1} × ${results.roomData?.trayHeatersCapacity || 2.2}kW</div>
-                        <div><strong>Drain:</strong> ${results.roomData?.drainHeatersQty || 1} × ${results.roomData?.drainHeatersCapacity || 0.04}kW</div>
-                        <div><strong>Total Heater Load:</strong> ${results.equipmentSummary?.totalHeaterLoad?.toFixed(2) || 'N/A'}kW</div>
-                    </div>
-                </div>
-                
-                <div>
-                    <div style="background: #FEF2F2; color: #B91C1C; padding: 4px 8px; font-weight: bold; font-size: 10px; margin-bottom: 4px; border-left: 3px solid #DC2626;">📊 Load Summary</div>
-                    <div style="background: #F8FAFC; border: 1px solid #E5E7EB; padding: 6px; border-radius: 4px; font-size: 9px;">
-                        <div><strong>Transmission:</strong> ${results.breakdown?.transmission?.total?.toFixed(2) || 'N/A'}kW</div>
-                        <div><strong>Product Load:</strong> ${((results.breakdown?.product?.total || 0) * 3.517).toFixed(2)}kW</div>
-                        <div><strong>Air Infiltration:</strong> ${((results.breakdown?.airChange?.loadTR || 0) * 3.517).toFixed(2)}kW</div>
-                        <div><strong>Internal Loads:</strong> ${((results.breakdown?.internal?.total || 0) * 3.517).toFixed(2)}kW</div>
-                        <div><strong>Safety Factor:</strong> ${results.loadSummary?.safetyPercentage?.toFixed(0) || 5}%</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-            <div class="main-result">
-                <div class="main-value">${results.loadSummary.finalLoadTR ? results.loadSummary.finalLoadTR.toFixed(2) : 'N/A'} TR</div>
-                <div style="font-size: 12px; margin-bottom: 8px;">Required Cooling Capacity</div>
-                <div style="font-size: 10px;">
-                    <div>Power: ${results.loadSummary.finalLoadKW ? results.loadSummary.finalLoadKW.toFixed(2) : 'N/A'} kW</div>
-                    <div>Daily Energy: ${results.dailyEnergyConsumption?.toFixed(1) || '0.0'} kWh</div>
-                    <div>Heat Removal: ${results.totalBTU?.toFixed(0) || '0'} BTU/hr</div>
-                    <div>Safety Factor: ${results.loadSummary.safetyPercentage ? results.loadSummary.safetyPercentage.toFixed(0) : 5}%</div>
-                </div>
-            </div>
-            
-                <div style="background: linear-gradient(135deg, #DC2626, #B91C1C); color: white; padding: 12px; border-radius: 8px; font-size: 10px;">
-                <div style="font-weight: bold; margin-bottom: 8px; font-size: 12px;">Blast Freezing Performance</div>
-                <div>Base Load: ${results.loadSummary?.baseLoadTR?.toFixed(2) || 'N/A'} TR</div>
-                <div>Batch Capacity: ${results.productInfo?.mass || 2000} kg</div>
-                <div>Freezing Time: ${results.batchHours || results.roomData?.batchHours || 8}h</div>
-                <div>Air Flow: ${results.roomData?.airFlowPerFan || 4000} CFM</div>
-                <div>Temperature Drop: ${results.temperatureDifference?.toFixed(0) || 70}°C</div>
-                <div>System Type: Blast Freezer</div>
-            </div>
-        </div>
-
-        <div class="section">
-            <div class="section-title">📋 INPUT PARAMETERS</div>
-            
-            <div class="subsection">
-                <div class="subsection-title">🏗️ Room Construction</div>
-                <div class="info-box">
-                    <div><strong>Room Dimensions:</strong></div>
-                    <div>• Length: ${results.dimensions?.length || 'N/A'} m</div>
-                    <div>• Breadth: ${results.dimensions?.breadth || 'N/A'} m</div>
-                    <div>• Height: ${results.dimensions?.height || 'N/A'} m</div>
-                    <div>• Total Volume: ${results.volume?.toFixed(1) || 'N/A'} m³</div>
-                </div>
-                <div class="info-box">
-                    <div><strong>Door Specifications:</strong></div>
-                    <div>• Door Width: ${results.doorDimensions?.width || 'N/A'} m</div>
-                    <div>• Door Height: ${results.doorDimensions?.height || 'N/A'} m</div>
-                </div>
-                <div class="info-box">
-                    <div><strong>Insulation Details:</strong></div>
-                    <div>• Insulation Type: ${results.construction?.type || 'PUF'}</div>
-                    <div>• Wall Thickness: ${results.construction?.wallThickness || 150} mm</div>
-                    <div>• Ceiling Thickness: ${results.construction?.ceilingThickness || 150} mm</div>
-                    <div>• Floor Thickness: ${results.construction?.floorThickness || 150} mm</div>
-                    <div>• Internal Floor: ${results.construction?.internalFloorThickness || 150} mm</div>
-                </div>
-            </div>
-
-            <div class="subsection">
-                <div class="subsection-title">🌡️ Operating Conditions</div>
-                <div class="info-box">
-                    <div><strong>Temperature Settings:</strong></div>
-                    <div>• Ambient Temperature: ${results.roomData?.ambientTemp || results.conditions?.ambientTemp}°C</div>
-                    <div>• Room Temperature: ${results.roomData?.roomTemp || results.conditions?.roomTemp}°C</div>
-                    <div>• Temperature Difference: ${results.temperatureDifference.toFixed(0)}°C</div>
-                </div>
-                <div class="info-box">
-                    <div><strong>Operating Parameters:</strong></div>
-                    <div>• Batch Hours: ${results.batchHours || results.roomData?.batchHours} hours</div>
-                    <div>• Operating Hours: ${results.roomData?.operatingHours || 24} hours/day</div>
-                </div>
-            </div>
-
-            <div class="subsection">
-                <div class="subsection-title">🥩 Product Information</div>
-                <div class="info-box">
-                    <div><strong>Product Details:</strong></div>
-                    <div>• Product Type: ${results.productInfo.type}</div>
-                    <div>• Batch Capacity: ${results.productInfo.mass} kg</div>
-                    <div>• Incoming Temperature: ${results.productInfo.incomingTemp}°C</div>
-                    <div>• Outgoing Temperature: ${results.productInfo.outgoingTemp}°C</div>
-                    <div>• Storage Capacity: ${results.roomData?.storageCapacity || 'N/A'} tons</div>
-                    <div>• Storage Density: ${results.storageCapacity.density} kg/m³</div>
-                    <div>• Storage Utilization: ${results.storageCapacity.utilization.toFixed(1)}%</div>
-                </div>
-            </div>
-
-            <div class="subsection">
-                <div class="subsection-title">👥 Personnel & Equipment</div>
-                <div class="info-box">
-                    <div><strong>Personnel:</strong></div>
-                    <div>• Number of People: ${results.roomData?.numberOfPeople || 2}</div>
-                    <div>• Working Hours: ${results.roomData?.workingHours || 4} hours/day</div>
-                </div>
-                <div class="info-box">
-                    <div><strong>Electrical Equipment:</strong></div>
-                    <div>• Light Load: ${results.roomData?.lightLoad || 0.1} kW</div>
-                    <div>• Fan Motor Rating: ${results.roomData?.fanMotorRating || 0.37} kW</div>
-                </div>
-                <div class="info-box">
-                    <div><strong>Heaters:</strong></div>
-                    <div>• Peripheral Heaters: ${results.roomData?.peripheralHeatersQty || 1} × ${results.roomData?.peripheralHeatersCapacity || 1.5} kW</div>
-                    <div>• Door Heaters: ${results.roomData?.doorHeatersQty || 1} × ${results.roomData?.doorHeatersCapacity || 0.27} kW</div>
-                    <div>• Tray Heaters: ${results.roomData?.trayHeatersQty || 1} × ${results.roomData?.trayHeatersCapacity || 2.2} kW</div>
-                    <div>• Drain Heaters: ${results.roomData?.drainHeatersQty || 1} × ${results.roomData?.drainHeatersCapacity || 0.04} kW</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="section">
-            <div class="section-title">📈 FINAL SUMMARY</div>
-            <table>
-                <tr>
-                    <th>Load Type</th>
-                    <th>Load (kW)</th>
-                    <th>Load (TR)</th>
-                </tr>
-                <tr>
-                    <td>Transmission Load</td>
-                    <td>${results.breakdown?.transmission?.total?.toFixed(2) || '0.00'}</td>
-                    <td>${results.breakdown?.transmission?.totalTR?.toFixed(3) || '0.000'}</td>
-                </tr>
-                <tr>
-                    <td>Product Load</td>
-                    <td>${((results.breakdown?.product?.total || 0) * 3.517).toFixed(2)}</td>
-                    <td>${results.breakdown?.product?.total?.toFixed(3) || '0.000'}</td>
-                </tr>
-                <tr>
-                    <td>Air Change Load</td>
-                    <td>${results.breakdown?.airChange?.loadKW?.toFixed(2) || '0.00'}</td>
-                    <td>${results.breakdown?.airChange?.loadTR?.toFixed(3) || '0.000'}</td>
-                </tr>
-                <tr>
-                    <td>Internal Load</td>
-                    <td>${((results.breakdown?.internal?.total || 0) * 3.517).toFixed(2)}</td>
-                    <td>${results.breakdown?.internal?.total?.toFixed(3) || '0.000'}</td>
-                </tr>
-                <tr>
-                    <td>Total Calculated</td>
-                    <td>${results.loadSummary?.totalCalculatedKW?.toFixed(2) || '0.00'}</td>
-                    <td>${results.loadSummary?.totalCalculatedTR?.toFixed(3) || '0.000'}</td>
-                </tr>
-                <tr>
-                    <td>Safety Factor (5%)</td>
-                    <td>${results.loadSummary?.safetyFactorKW?.toFixed(2) || '0.00'}</td>
-                    <td>${results.loadSummary?.safetyFactorTR?.toFixed(3) || '0.000'}</td>
-                </tr>
-                <tr class="final-row">
-                    <td><strong>FINAL CAPACITY REQUIRED</strong></td>
-                    <td><strong>${results.loadSummary?.finalLoadKW?.toFixed(2) || 'N/A'}</strong></td>
-                    <td><strong>${results.loadSummary?.finalLoadTR?.toFixed(2) || 'N/A'}</strong></td>
-                </tr>
-            </table>
-        </div>
-
-        <div class="footer">
-            <div style="font-size: 16px; font-weight: bold; color: #1E3A8A;">ENZO ENGINEERING SOLUTIONS</div>
-            <div>Report generated by Enzo CoolCalc</div>
-            <div>Professional Refrigeration Load Calculation System</div>
-            <div>© ${new Date().getFullYear()} Enzo Engineering Solutions</div>
-        </div>
-    </body>
-    </html>
-    `;
-  };
-
-  const handleShare = async () => {
-    console.log('Blast Freezer - handleShare called, Print available:', !!Print, 'Sharing available:', !!Sharing);
-    try {
-      // Try to generate PDF first if packages are available
-      if (Print && Sharing) {
-        console.log('Blast Freezer - Attempting PDF generation...');
-        try {
-          const htmlContent = generateHTMLReport();
-          console.log('Blast Freezer - Generated HTML content length:', htmlContent.length);
-          const { uri } = await Print.printToFileAsync({
-            html: htmlContent,
-            base64: false
-          });
-          console.log('Blast Freezer - PDF generated successfully:', uri);
-          
-          if (await Sharing.isAvailableAsync()) {
-            console.log('Blast Freezer - Sharing PDF file:', uri);
-            await Sharing.shareAsync(uri, {
-              mimeType: 'application/pdf',
-              dialogTitle: 'Share Blast Freezer Load Calculation Report',
-              UTI: 'com.adobe.pdf'
-            });
-            console.log('Blast Freezer - PDF shared successfully');
-            return;
-          } else {
-            console.log('Blast Freezer - Sharing not available, falling back to text');
-          }
-        } catch (pdfError) {
-          console.log('Blast Freezer - PDF generation failed, falling back to text:', pdfError);
-          console.error('Blast Freezer - PDF Error details:', (pdfError as Error).message || pdfError);
-        }
-      }
-      
-      // Fallback to text sharing
-      console.log('Blast Freezer - Using text sharing fallback');
-      const content = generateTextReport();
-      await Share.share({
-        message: content,
-        title: 'Blast Freezer Load Calculation Report'
-      });
-      console.log('Blast Freezer - Text report shared successfully');
-    } catch (error) {
-      console.error('Blast Freezer - Share error:', error);
-      Alert.alert('Error', 'Failed to share report');
-    }
-  };
-
-  const generateTextReport = () => {
-    if (!results) return '';
-    
-    return `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    ENZO ENGINEERING SOLUTIONS
-⚡ POWERED BY ENZO COOLCALC ⚡
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-❄️ BLAST FREEZER COOLING LOAD CALCULATION REPORT
-================================================
-
-📅 Generated on: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}
-
-🎯 FINAL RESULTS:
-Required Capacity: ${results.loadSummary.finalLoadTR.toFixed(2)} TR
-Power: ${results.loadSummary.finalLoadKW.toFixed(2)} kW
-Daily Energy: ${results.dailyEnergyConsumption?.toFixed(1) || '0.0'} kWh
-Heat Removal: ${results.totalBTU?.toFixed(0) || '0'} BTU/hr
-Safety Factor: ${results.loadSummary.safetyPercentage.toFixed(0)}%
-
-📋 INPUT PARAMETERS:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🏗️ ROOM CONSTRUCTION:
-Dimensions: ${results.dimensions.length}m × ${results.dimensions.breadth}m × ${results.dimensions.height}m
-Volume: ${results.volume.toFixed(1)} m³
-Door Size: ${results.doorDimensions.width}m × ${results.doorDimensions.height}m
-Insulation: ${results.construction.type}
-Wall/Ceiling/Floor: ${results.construction.wallThickness}/${results.construction.ceilingThickness}/${results.construction.floorThickness}mm
-
-🌡️ OPERATING CONDITIONS:
-Ambient Temperature: ${results.roomData?.ambientTemp || results.conditions?.ambientTemp}°C
-Room Temperature: ${results.roomData?.roomTemp || results.conditions?.roomTemp}°C
-Temperature Difference: ${results.temperatureDifference.toFixed(0)}°C
-Batch Hours: ${results.batchHours || results.roomData?.batchHours} hours
-Operating Hours: ${results.roomData?.operatingHours || 24} hours/day
-
-🥩 PRODUCT INFORMATION:
-Product Type: ${results.productInfo.type}
-Batch Capacity: ${results.productInfo.mass} kg
-Temperature Range: ${results.productInfo.incomingTemp}°C → ${results.productInfo.outgoingTemp}°C
-Storage Density: ${results.storageCapacity.density} kg/m³
-Storage Utilization: ${results.storageCapacity.utilization.toFixed(1)}%
-
-👥 PERSONNEL & EQUIPMENT:
-Number of People: ${results.roomData?.numberOfPeople || 2}
-Working Hours: ${results.roomData?.workingHours || 4} hours/day
-Light Load: ${results.roomData?.lightLoad || 0.1} kW
-Fan Motor: ${results.roomData?.fanMotorRating || 0.37} kW
-
-⚡ HEATER LOADS:
-Peripheral: ${results.roomData?.peripheralHeatersQty || 1} × ${results.roomData?.peripheralHeatersCapacity || 1.5} kW
-Door: ${results.roomData?.doorHeatersQty || 1} × ${results.roomData?.doorHeatersCapacity || 0.27} kW
-Tray: ${results.roomData?.trayHeatersQty || 1} × ${results.roomData?.trayHeatersCapacity || 2.2} kW
-Drain: ${results.roomData?.drainHeatersQty || 1} × ${results.roomData?.drainHeatersCapacity || 0.04} kW
-
-📊 LOAD BREAKDOWN:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Transmission Load: ${results.breakdown.transmission.totalTR.toFixed(3)} TR
-Product Load: ${results.breakdown.product.total.toFixed(3)} TR
-Air Change Load: ${results.breakdown.airChange.loadTR.toFixed(3)} TR
-Internal Loads: ${results.breakdown.internal.total.toFixed(3)} TR
-
-📈 CALCULATION SUMMARY:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Total Calculated: ${results.loadSummary.totalCalculatedTR.toFixed(3)} TR
-Safety Factor (5%): ${results.loadSummary.safetyFactorTR.toFixed(3)} TR
-FINAL CAPACITY REQUIRED: ${results.loadSummary.finalLoadTR.toFixed(2)} TR
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Generated by Enzo CoolCalc
-ENZO ENGINEERING SOLUTIONS
-Professional Refrigeration Load Calculation System
-© ${new Date().getFullYear()} Enzo Engineering Solutions
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    `;
-  };
-
-  // Recalculate whenever the screen comes into focus
-  useFocusEffect(
-    React.useCallback(() => {
-      calculateResults();
-    }, [])
-  );
-
-  // Also set up a listener for storage changes
   useEffect(() => {
-    const interval = setInterval(() => {
-      calculateResults();
-    }, 1000); // Check for changes every second
-
-    return () => clearInterval(interval);
+    calculateResults();
   }, []);
 
   const calculateResults = async () => {
@@ -552,50 +22,23 @@ Professional Refrigeration Load Calculation System
       const productData = await AsyncStorage.getItem('blastFreezerProductData');
       const usageData = await AsyncStorage.getItem('blastFreezerUsageData');
 
-      const room = roomData ? JSON.parse(roomData) : { 
-        length: '5.0', breadth: '5.0', height: '3.5', doorWidth: '2.1', doorHeight: '2.1'
-      };
-      
-      const conditions = conditionsData ? JSON.parse(conditionsData) : { 
-        ambientTemp: '43', roomTemp: '-35', batchHours: '8', operatingHours: '24'
-      };
-      
-      const construction = constructionData ? JSON.parse(constructionData) : {
-        insulationType: 'PUF', wallThickness: 150, ceilingThickness: 150, 
-        floorThickness: 150, internalFloorThickness: '150'
-      };
-      
-      const product = productData ? JSON.parse(productData) : { 
-        productType: 'Chicken', capacityRequired: '2000', incomingTemp: '-5', outgoingTemp: '-30',
-        storageCapacity: '4', numberOfPeople: '2', workingHours: '4',
-        lightLoad: '0.1', fanMotorRating: '0.37'
-      };
+      if (roomData && conditionsData && productData) {
+        const room = JSON.parse(roomData);
+        const conditions = JSON.parse(conditionsData);
+        const construction = constructionData ? JSON.parse(constructionData) : {};
+        const product = JSON.parse(productData);
+        const usage = usageData ? JSON.parse(usageData) : {};
 
-      const usage = usageData ? JSON.parse(usageData) : {
-        peripheralHeatersQty: '1', peripheralHeatersCapacity: '1.5',
-        doorHeatersQty: '1', doorHeatersCapacity: '0.27',
-        trayHeatersQty: '1', trayHeatersCapacity: '2.2',
-        drainHeatersQty: '1', drainHeatersCapacity: '0.04'
-      };
+        // Merge all data
+        const mergedRoomData = { ...room, ...construction };
+        const mergedProductData = { ...product, ...usage };
 
-      // Merge all data
-      const roomWithConstruction = { ...room, ...construction };
-      const productWithUsage = { ...product, ...usage };
-
-      const calculatedResults = calculateBlastFreezerLoad(roomWithConstruction, conditions, productWithUsage);
-      
-      // Add input data to results for PDF generation using enhanced object approach
-      const enhancedResults = {
-        ...calculatedResults,
-        roomData: { ...roomWithConstruction, ...conditions },
-        conditions: conditions,
-        productData: productWithUsage
-      };
-      
-      setResults(enhancedResults);
-      setLoading(false);
+        const calculationResults = calculateBlastFreezerLoad(mergedRoomData, conditions, mergedProductData);
+        setResults(calculationResults);
+      }
     } catch (error) {
       console.error('Error calculating blast freezer results:', error);
+    } finally {
       setLoading(false);
     }
   };
@@ -603,9 +46,9 @@ Professional Refrigeration Load Calculation System
   if (loading || !results) {
     return (
       <LinearGradient colors={['#F8FAFC', '#EBF8FF']} style={styles.container}>
-        <Header title="Blast Freezer Results" step={6} totalSteps={6} />
+        <Header title="Calculating Results..." step={6} totalSteps={6} />
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Calculating cooling load...</Text>
+          <Text style={styles.loadingText}>Processing calculations...</Text>
         </View>
       </LinearGradient>
     );
@@ -615,296 +58,117 @@ Professional Refrigeration Load Calculation System
     <LinearGradient colors={['#F8FAFC', '#EBF8FF']} style={styles.container}>
       <Header title="Blast Freezer Results" step={6} totalSteps={6} />
       
-      {/* Powered by Enzo Banner */}
-      <View style={styles.poweredByBanner}>
-        <Text style={styles.poweredByText}>⚡ Powered by Enzo</Text>
-      </View>
-      
-      <View style={styles.shareButtonsContainer}>
-        <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
-          <Share2 color="#3B82F6" size={20} strokeWidth={2} />
-          <Text style={styles.shareButtonText}>Share PDF Report</Text>
-        </TouchableOpacity>
-      </View>
-      
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.mainResultCard}>
-          <Text style={styles.mainResultTitle}>❄️ BLAST FREEZER LOAD CALCULATION</Text>
-          <Text style={styles.mainResultValue}>{results.loadSummary.finalLoadTR.toFixed(2)} TR</Text>
-          <Text style={styles.mainResultSubtitle}>Power: {results.loadSummary.finalLoadKW.toFixed(2)} kW</Text>
-          <Text style={styles.mainResultSubtitle}>Daily Energy: {results.dailyEnergyConsumption?.toFixed(1) || '0.0'} kWh</Text>
-          <Text style={styles.mainResultSubtitle}>Heat Removal: {results.totalBTU?.toFixed(0) || '0'} BTU/hr</Text>
-          <Text style={styles.mainResultSubtitle}>Safety Factor: {results.loadSummary.safetyPercentage.toFixed(0)}%</Text>
-        </View>
-
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📊 TRANSMISSION LOADS</Text>
+          <Text style={styles.sectionTitle}>Final Cooling Load</Text>
           
-          <View style={styles.tableCard}>
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderText, { flex: 2 }]}>Surface</Text>
-              <Text style={[styles.tableHeaderText, { flex: 1 }]}>Area(m²)</Text>
-              <Text style={[styles.tableHeaderText, { flex: 1 }]}>U-factor</Text>
-              <Text style={[styles.tableHeaderText, { flex: 1 }]}>ΔT</Text>
-              <Text style={[styles.tableHeaderText, { flex: 1 }]}>kW</Text>
-              <Text style={[styles.tableHeaderText, { flex: 1 }]}>TR</Text>
+          <View style={styles.resultsCard}>
+            <View style={styles.resultRow}>
+              <Text style={styles.resultLabel}>Total Load:</Text>
+              <Text style={styles.resultValue}>{results.loadSummary.finalLoadKW.toFixed(2)} kW</Text>
             </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 2 }]}>Walls</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.areas.wall.toFixed(1)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.thermalProperties.wallUFactor.toFixed(3)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.temperatureDifference.toFixed(0)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.transmission.walls.toFixed(2)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.transmission.wallsTR.toFixed(3)}</Text>
+            <View style={styles.resultRow}>
+              <Text style={styles.resultLabel}>Refrigeration Tons:</Text>
+              <Text style={styles.resultValue}>{results.loadSummary.finalLoadTR.toFixed(2)} TR</Text>
             </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 2 }]}>Ceiling</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.areas.ceiling.toFixed(1)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.thermalProperties.ceilingUFactor.toFixed(3)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.temperatureDifference.toFixed(0)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.transmission.ceiling.toFixed(2)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.transmission.ceilingTR.toFixed(3)}</Text>
+            <View style={styles.resultRow}>
+              <Text style={styles.resultLabel}>BTU/hr:</Text>
+              <Text style={styles.resultValue}>{results.totalBTU.toFixed(0)} BTU/hr</Text>
             </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 2 }]}>Floor</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.areas.floor.toFixed(1)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.thermalProperties.floorUFactor.toFixed(3)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.temperatureDifference.toFixed(0)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.transmission.floor.toFixed(2)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.transmission.floorTR.toFixed(3)}</Text>
+            <View style={styles.resultRow}>
+              <Text style={styles.resultLabel}>Daily Energy:</Text>
+              <Text style={styles.resultValue}>{results.dailyEnergyConsumption.toFixed(1)} kWh/day</Text>
             </View>
-            
-            <View style={[styles.tableRow, styles.totalRow]}>
-              <Text style={[styles.tableCellBold, { flex: 2 }]}>TOTAL TRANSMISSION</Text>
-              <Text style={[styles.tableCellBold, { flex: 1 }]}>-</Text>
-              <Text style={[styles.tableCellBold, { flex: 1 }]}>-</Text>
-              <Text style={[styles.tableCellBold, { flex: 1 }]}>-</Text>
-              <Text style={[styles.tableCellBold, { flex: 1 }]}>{results.breakdown.transmission.total.toFixed(2)}</Text>
-              <Text style={[styles.tableCellBold, { flex: 1 }]}>{results.breakdown.transmission.totalTR.toFixed(3)}</Text>
+            <View style={styles.resultRow}>
+              <Text style={styles.resultLabel}>SHR:</Text>
+              <Text style={styles.resultValue}>{(results.engineeringOutputs.SHR * 100).toFixed(1)}%</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🥩 PRODUCT LOADS</Text>
+          <Text style={styles.sectionTitle}>Load Breakdown</Text>
           
-          <View style={styles.tableCard}>
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderText, { flex: 3 }]}>Load Component</Text>
-              <Text style={[styles.tableHeaderText, { flex: 2 }]}>Load(kJ)</Text>
-              <Text style={[styles.tableHeaderText, { flex: 1 }]}>TR</Text>
+          <View style={styles.breakdownCard}>
+            <View style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>Transmission Load</Text>
+              <Text style={styles.breakdownValue}>{results.breakdown.transmission.totalTR.toFixed(2)} TR</Text>
             </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Sensible Heat (Above Frzg)</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.product.sensibleAboveKJ.toFixed(0)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.product.sensibleAbove.toFixed(3)}</Text>
+            <View style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>Product Load</Text>
+              <Text style={styles.breakdownValue}>{results.breakdown.product.total.toFixed(2)} TR</Text>
             </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Latent Heat (Freezing)</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.product.latentKJ.toFixed(0)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.product.latent.toFixed(3)}</Text>
+            <View style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>Air Change Load</Text>
+              <Text style={styles.breakdownValue}>{results.breakdown.airChange.loadTR.toFixed(2)} TR</Text>
             </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Sensible Heat (Below Frzg)</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.product.sensibleBelowKJ.toFixed(0)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.product.sensibleBelow.toFixed(3)}</Text>
+            <View style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>Internal Load</Text>
+              <Text style={styles.breakdownValue}>{results.breakdown.internal.total.toFixed(2)} TR</Text>
             </View>
-            
-            <View style={[styles.tableRow, styles.totalRow]}>
-              <Text style={[styles.tableCellBold, { flex: 3 }]}>TOTAL PRODUCT LOAD</Text>
-              <Text style={[styles.tableCellBold, { flex: 2 }]}>{(results.breakdown.product.sensibleAboveKJ + results.breakdown.product.latentKJ + results.breakdown.product.sensibleBelowKJ).toFixed(0)}</Text>
-              <Text style={[styles.tableCellBold, { flex: 1 }]}>{results.breakdown.product.total.toFixed(3)}</Text>
+            <View style={[styles.breakdownRow, styles.totalBreakdownRow]}>
+              <Text style={styles.totalBreakdownLabel}>Total Before Safety</Text>
+              <Text style={styles.totalBreakdownValue}>{results.loadSummary.totalCalculatedTR.toFixed(2)} TR</Text>
+            </View>
+            <View style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>Safety Factor ({results.loadSummary.safetyPercentage.toFixed(0)}%)</Text>
+              <Text style={styles.breakdownValue}>{results.loadSummary.safetyFactorTR.toFixed(2)} TR</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>💨 AIR CHANGE LOADS</Text>
+          <Text style={styles.sectionTitle}>Equipment Summary</Text>
           
-          <View style={styles.tableCard}>
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderText, { flex: 3 }]}>Component</Text>
-              <Text style={[styles.tableHeaderText, { flex: 2 }]}>Value</Text>
-              <Text style={[styles.tableHeaderText, { flex: 1 }]}>TR</Text>
+          <View style={styles.equipmentCard}>
+            <View style={styles.equipmentRow}>
+              <Text style={styles.equipmentLabel}>Air Flow Required:</Text>
+              <Text style={styles.equipmentValue}>{results.engineeringOutputs.airQtyRequiredCfm.toFixed(0)} CFM</Text>
             </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Air change rate</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.airChange.airChangeRate} changes/hr</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>-</Text>
+            <View style={styles.equipmentRow}>
+              <Text style={styles.equipmentLabel}>Fan Motor Load:</Text>
+              <Text style={styles.equipmentValue}>{results.equipmentSummary.totalFanLoad.toFixed(2)} kW</Text>
             </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Enthalpy difference</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.airChange.enthalpyDiff} kJ/kg</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>-</Text>
+            <View style={styles.equipmentRow}>
+              <Text style={styles.equipmentLabel}>Total Heater Load:</Text>
+              <Text style={styles.equipmentValue}>{results.equipmentSummary.totalHeaterLoad.toFixed(2)} kW</Text>
             </View>
-            
-            <View style={[styles.tableRow, styles.totalRow]}>
-              <Text style={[styles.tableCellBold, { flex: 3 }]}>Air change load</Text>
-              <Text style={[styles.tableCellBold, { flex: 2 }]}>{results.breakdown.airChange.totalKJDay.toFixed(0)} kJ/day</Text>
-              <Text style={[styles.tableCellBold, { flex: 1 }]}>{results.breakdown.airChange.loadTR.toFixed(3)}</Text>
+            <View style={styles.equipmentRow}>
+              <Text style={styles.equipmentLabel}>Batch Processing Time:</Text>
+              <Text style={styles.equipmentValue}>{results.batchHours} hours</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>⚡ INTERNAL LOADS</Text>
+          <Text style={styles.sectionTitle}>Storage Information</Text>
           
-          <View style={styles.tableCard}>
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderText, { flex: 3 }]}>Load Component</Text>
-              <Text style={[styles.tableHeaderText, { flex: 2 }]}>Load(kJ/day)</Text>
-              <Text style={[styles.tableHeaderText, { flex: 1 }]}>TR</Text>
+          <View style={styles.storageCard}>
+            <View style={styles.storageRow}>
+              <Text style={styles.storageLabel}>Maximum Storage:</Text>
+              <Text style={styles.storageValue}>{results.storageCapacity.maximum.toFixed(0)} kg</Text>
             </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Occupancy Load</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.internal.occupancyKJDay.toFixed(0)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.internal.occupancy.toFixed(3)}</Text>
+            <View style={styles.storageRow}>
+              <Text style={styles.storageLabel}>Required Capacity:</Text>
+              <Text style={styles.storageValue}>{results.productInfo.mass.toFixed(0)} kg</Text>
             </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Lighting Load</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.internal.lightingKJDay.toFixed(0)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.internal.lighting.toFixed(3)}</Text>
+            <View style={styles.storageRow}>
+              <Text style={styles.storageLabel}>Utilization:</Text>
+              <Text style={styles.storageValue}>{results.storageCapacity.utilization.toFixed(1)}%</Text>
             </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Equipment Load</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.internal.equipmentKJDay.toFixed(0)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.internal.equipment.toFixed(3)}</Text>
-            </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Peripheral Heaters</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.internal.peripheralHeatersKJDay.toFixed(0)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.internal.peripheralHeaters.toFixed(3)}</Text>
-            </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Door Heaters</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.internal.doorHeatersKJDay.toFixed(0)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.internal.doorHeaters.toFixed(3)}</Text>
-            </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Tray Heaters</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.internal.trayHeatersKJDay.toFixed(0)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.internal.trayHeaters.toFixed(3)}</Text>
-            </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Drain Heaters</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.internal.drainHeatersKJDay.toFixed(0)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.internal.drainHeaters.toFixed(3)}</Text>
-            </View>
-            
-            <View style={[styles.tableRow, styles.totalRow]}>
-              <Text style={[styles.tableCellBold, { flex: 3 }]}>TOTAL INTERNAL</Text>
-              <Text style={[styles.tableCellBold, { flex: 2 }]}>{(results.breakdown.internal.occupancyKJDay + results.breakdown.internal.lightingKJDay + results.breakdown.internal.equipmentKJDay + results.breakdown.internal.peripheralHeatersKJDay + results.breakdown.internal.doorHeatersKJDay + results.breakdown.internal.trayHeatersKJDay + results.breakdown.internal.drainHeatersKJDay).toFixed(0)}</Text>
-              <Text style={[styles.tableCellBold, { flex: 1 }]}>{results.breakdown.internal.total.toFixed(3)}</Text>
+            <View style={styles.storageRow}>
+              <Text style={styles.storageLabel}>Storage Density:</Text>
+              <Text style={styles.storageValue}>{results.storageCapacity.density.toFixed(1)} kg/m³</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📈 FINAL SUMMARY</Text>
-          
-          <View style={styles.tableCard}>
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderText, { flex: 3 }]}>Load Type</Text>
-              <Text style={[styles.tableHeaderText, { flex: 2 }]}>kW</Text>
-              <Text style={[styles.tableHeaderText, { flex: 1 }]}>TR</Text>
-            </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Transmission Load</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.transmission.total.toFixed(2)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.transmission.totalTR.toFixed(3)}</Text>
-            </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Product Load</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{(results.breakdown.product.total * 3.517).toFixed(2)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.product.total.toFixed(3)}</Text>
-            </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Air Change Load</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.breakdown.airChange.loadKW?.toFixed(2) || '0.00'}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.airChange.loadTR.toFixed(3)}</Text>
-            </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Internal Load</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{(results.breakdown.internal.total * 3.517).toFixed(2)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.breakdown.internal.total.toFixed(3)}</Text>
-            </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Total Calculated</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.loadSummary.totalCalculatedKW.toFixed(2)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.loadSummary.totalCalculatedTR.toFixed(3)}</Text>
-            </View>
-            
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableCell, { flex: 3 }]}>Safety Factor (5%)</Text>
-              <Text style={[styles.tableCell, { flex: 2 }]}>{results.loadSummary.safetyFactorKW.toFixed(2)}</Text>
-              <Text style={[styles.tableCell, { flex: 1 }]}>{results.loadSummary.safetyFactorTR.toFixed(3)}</Text>
-            </View>
-            
-            <View style={[styles.tableRow, styles.finalRow]}>
-              <Text style={[styles.tableCellFinal, { flex: 3 }]}>FINAL CAPACITY REQUIRED</Text>
-              <Text style={[styles.tableCellFinal, { flex: 2 }]}>{results.loadSummary.finalLoadKW.toFixed(2)}</Text>
-              <Text style={[styles.tableCellFinal, { flex: 1 }]}>{results.loadSummary.finalLoadTR.toFixed(2)}</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Additional Information</Text>
-          
-          <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>Blast Freezer Specifications Summary</Text>
-            <Text style={styles.infoText}>• Dimensions: {results.dimensions.length}m × {results.dimensions.breadth}m × {results.dimensions.height}m</Text>
-            <Text style={styles.infoText}>• Door size: {results.doorDimensions.width}m × {results.doorDimensions.height}m</Text>
-            <Text style={styles.infoText}>• Room volume: {results.volume.toFixed(1)} m³</Text>
-            <Text style={styles.infoText}>• Temperature difference: {results.temperatureDifference.toFixed(1)}°C</Text>
-            <Text style={styles.infoText}>• Batch time: {results.batchHours} hours</Text>
-          </View>
-          
-          <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>Construction Details</Text>
-            <Text style={styles.infoText}>• Insulation: {results.construction.type}</Text>
-            <Text style={styles.infoText}>• Wall thickness: {results.construction.wallThickness}mm</Text>
-            <Text style={styles.infoText}>• Ceiling thickness: {results.construction.ceilingThickness}mm</Text>
-            <Text style={styles.infoText}>• Floor thickness: {results.construction.floorThickness}mm</Text>
-            <Text style={styles.infoText}>• Internal floor: {results.construction.internalFloorThickness}mm</Text>
-          </View>
-          
-          <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>Product Information</Text>
-            <Text style={styles.infoText}>• Product: {results.productInfo.type}</Text>
-            <Text style={styles.infoText}>• Batch capacity: {results.productInfo.mass} kg</Text>
-            <Text style={styles.infoText}>• Temperature range: {results.productInfo.incomingTemp}°C → {results.productInfo.outgoingTemp}°C</Text>
-            <Text style={styles.infoText}>• Storage density: {results.storageCapacity.density} kg/m³</Text>
-            <Text style={styles.infoText}>• Storage utilization: {results.storageCapacity.utilization.toFixed(1)}%</Text>
-          </View>
-          
-          <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>Equipment Summary</Text>
-            <Text style={styles.infoText}>• Total heater load: {results.equipmentSummary.totalHeaterLoad.toFixed(2)} kW</Text>
-            <Text style={styles.infoText}>• Fan motor load: {results.equipmentSummary.totalFanLoad} kW</Text>
-            <Text style={styles.infoText}>• Lighting load: {results.equipmentSummary.totalLightingLoad} kW</Text>
-            <Text style={styles.infoText}>• People load: {results.equipmentSummary.totalPeopleLoad.toFixed(3)} kW</Text>
-          </View>
+          <SharePDFButton 
+            calculationData={results}
+            calculationType="blastfreezer"
+            title="Blast Freezer Load Calculation"
+          />
         </View>
       </ScrollView>
     </LinearGradient>
@@ -915,52 +179,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  poweredByBanner: {
-    backgroundColor: '#1E3A8A',
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#3B82F6',
-  },
-  poweredByText: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    textAlign: 'center',
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  shareButtonsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    gap: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  shareButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: '#EBF8FF',
-    borderRadius: 10,
-    gap: 8,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  shareButtonText: {
-    fontSize: 14,
-    color: '#3B82F6',
-    fontWeight: '600',
-  },
   content: {
     flex: 1,
     paddingHorizontal: 20,
+    paddingBottom: 20,
   },
   loadingContainer: {
     flex: 1,
@@ -971,36 +193,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#64748B',
   },
-  mainResultCard: {
-    backgroundColor: '#1E3A8A',
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 24,
-    alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  mainResultTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  mainResultValue: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: '#60A5FA',
-    marginBottom: 8,
-  },
-  mainResultSubtitle: {
-    fontSize: 14,
-    color: '#CBD5E1',
-    marginBottom: 4,
-  },
   section: {
     marginBottom: 24,
   },
@@ -1010,86 +202,124 @@ const styles = StyleSheet.create({
     color: '#1E3A8A',
     marginBottom: 16,
   },
-  tableCard: {
+  resultsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: '#10B981',
+  },
+  resultRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  resultLabel: {
+    fontSize: 16,
+    color: '#1E3A8A',
+    fontWeight: '500',
+  },
+  resultValue: {
+    fontSize: 16,
+    color: '#10B981',
+    fontWeight: '700',
+  },
+  breakdownCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
   },
-  tableHeader: {
+  breakdownRow: {
     flexDirection: 'row',
-    paddingVertical: 8,
-    borderBottomWidth: 2,
-    borderBottomColor: '#3B82F6',
-    marginBottom: 8,
-  },
-  tableHeaderText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#1E3A8A',
-    textAlign: 'center',
-  },
-  tableRow: {
-    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
-  totalRow: {
-    borderBottomWidth: 0,
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-    marginTop: 4,
-    paddingTop: 8,
-  },
-  finalRow: {
+  totalBreakdownRow: {
     borderTopWidth: 2,
     borderTopColor: '#3B82F6',
-    backgroundColor: '#EBF8FF',
     marginTop: 8,
-    paddingTop: 12,
-    borderRadius: 8,
+    paddingTop: 8,
   },
-  tableCell: {
-    fontSize: 11,
+  breakdownLabel: {
+    fontSize: 14,
     color: '#64748B',
-    textAlign: 'center',
+    fontWeight: '500',
   },
-  tableCellBold: {
-    fontSize: 12,
+  breakdownValue: {
+    fontSize: 14,
     color: '#1E3A8A',
     fontWeight: '600',
-    textAlign: 'center',
   },
-  tableCellFinal: {
-    fontSize: 13,
+  totalBreakdownLabel: {
+    fontSize: 15,
+    color: '#3B82F6',
+    fontWeight: '600',
+  },
+  totalBreakdownValue: {
+    fontSize: 15,
     color: '#3B82F6',
     fontWeight: '700',
-    textAlign: 'center',
   },
-  infoCard: {
+  equipmentCard: {
     backgroundColor: '#F8FAFC',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
     borderLeftWidth: 4,
     borderLeftColor: '#3B82F6',
   },
-  infoTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1E3A8A',
-    marginBottom: 8,
+  equipmentRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
   },
-  infoText: {
-    fontSize: 12,
-    color: '#64748B',
-    lineHeight: 16,
-    marginBottom: 4,
+  equipmentLabel: {
+    fontSize: 14,
+    color: '#1E3A8A',
+    fontWeight: '500',
+  },
+  equipmentValue: {
+    fontSize: 14,
+    color: '#3B82F6',
+    fontWeight: '600',
+  },
+  storageCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#10B981',
+  },
+  storageRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  storageLabel: {
+    fontSize: 14,
+    color: '#1E3A8A',
+    fontWeight: '500',
+  },
+  storageValue: {
+    fontSize: 14,
+    color: '#10B981',
+    fontWeight: '600',
   },
 });
